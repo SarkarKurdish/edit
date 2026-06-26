@@ -27,6 +27,50 @@ const globalCurrentMarkIndex = ref<Map<number, number>>(new Map())
 const globalResultLimit = ref(RESULTS_PAGE_SIZE)
 const globalUsedSubstringExpansion = ref(false)
 const globalMayHaveMore = ref(false)
+
+const EyeIcon = () =>
+  h(
+    'svg',
+    {
+      width: '18',
+      height: '18',
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    },
+    [
+      h('path', { d: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' }),
+      h('circle', { cx: '12', cy: '12', r: '3' })
+    ]
+  )
+
+const EyeOffIcon = () =>
+  h(
+    'svg',
+    {
+      width: '18',
+      height: '18',
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    },
+    [
+      h('path', {
+        d: 'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94'
+      }),
+      h('path', {
+        d: 'M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19'
+      }),
+      h('line', { x1: '1', y1: '1', x2: '23', y2: '23' }),
+      h('path', { d: 'M14.12 14.12a3 3 0 1 1-4.24-4.24' })
+    ]
+  )
 </script>
 
 <script lang="ts" setup>
@@ -128,6 +172,8 @@ const { localeIndex, theme } = vitePressData
  * Persisted in localStorage for user preference across sessions.
  */
 const isFuzzySearch = useLocalStorage('vitepress:local-search-fuzzy', false)
+
+const isAnon = useLocalStorage('vitepress:local-search-anon', false)
 
 const customMetadata = shallowRef<
   Record<string, { l?: string[]; s?: string[] }>
@@ -1259,7 +1305,7 @@ onKeyStroke('Enter', (e) => {
   }
 
   if (selectedPackage) {
-    addRecentSearch(filterText.value)
+    if (!isAnon.value) addRecentSearch(filterText.value)
     const idx = results.value.indexOf(selectedPackage)
     const matchCtx = idx >= 0 ? getMatchContext(idx) : null
     navigateToResult(selectedPackage.id, matchCtx)
@@ -1403,11 +1449,13 @@ function addRecentSearch(query: string) {
 }
 
 function removeRecentSearch(query: string) {
+  if (isAnon.value) return
   recentSearches.value = recentSearches.value.filter((s) => s !== query)
   nextTick().then(() => focusSearchInput(false))
 }
 
 function clearAllRecentSearches() {
+  if (isAnon.value) return
   recentSearches.value = []
   nextTick().then(() => focusSearchInput(false))
 }
@@ -1436,7 +1484,7 @@ function handleResultClick(e: MouseEvent, id: string) {
     return
   }
   e.preventDefault()
-  addRecentSearch(filterText.value)
+  if (!isAnon.value) addRecentSearch(filterText.value)
 
   // Find which result index was clicked to get the match context
   const index = results.value.findIndex((r) => r.id === id)
@@ -1865,33 +1913,60 @@ function isSamePageComparison(destPath: string) {
                 </div>
               </li>
               <li
-                v-if="!filterText && recentSearches.length"
-                key="recent-searches"
-                class="recent-searches"
+                v-if="!filterText"
+                key="history-section"
+                class="history-section"
               >
-                <div class="recent-header">
-                  <span class="recent-label">Recent</span>
-                  <button class="clear-all-btn" @click="clearAllRecentSearches">
-                    Clear all
-                  </button>
-                </div>
-                <div class="recent-items">
-                  <div
-                    v-for="s in recentSearches"
-                    :key="s"
-                    class="recent-item-wrapper"
-                  >
-                    <button class="recent-item" @click="applySuggestion(s)">
-                      {{ s }}
-                    </button>
+                <template v-if="!isAnon && recentSearches.length">
+                  <div class="recent-header">
+                    <span class="recent-label">Recent</span>
                     <button
-                      class="recent-delete-btn"
-                      title="Remove search"
-                      @click.stop.prevent="removeRecentSearch(s)"
+                      class="clear-all-btn"
+                      @click="clearAllRecentSearches"
                     >
-                      <span class="vpi-delete delete-icon-mini" />
+                      Clear all
                     </button>
                   </div>
+                  <div class="recent-items">
+                    <div
+                      v-for="s in recentSearches"
+                      :key="s"
+                      class="recent-item-wrapper"
+                    >
+                      <button class="recent-item" @click="applySuggestion(s)">
+                        {{ s }}
+                      </button>
+                      <button
+                        class="recent-delete-btn"
+                        title="Remove search"
+                        @click.stop.prevent="removeRecentSearch(s)"
+                      >
+                        <span class="vpi-delete delete-icon-mini" />
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <div v-else-if="!isAnon" class="history-empty-placeholder">
+                  No recent searches
+                </div>
+                <div v-if="isAnon" class="anon-placeholder">
+                  <EyeOffIcon />
+                  <span class="anon-placeholder-text">
+                    Search history is disabled
+                  </span>
+                </div>
+                <div class="history-toggle-footer">
+                  <button class="history-toggle-btn" @click="isAnon = !isAnon">
+                    <EyeOffIcon v-if="!isAnon" />
+                    <EyeIcon v-else />
+                    <span>
+                      {{
+                        isAnon
+                          ? 'Enable Search History'
+                          : 'Disable Search History'
+                      }}
+                    </span>
+                  </button>
                 </div>
               </li>
               <li
@@ -2563,10 +2638,6 @@ svg {
   color: var(--vp-c-text-2);
 }
 
-.recent-searches {
-  padding: 8px 12px;
-}
-
 .recent-header {
   display: flex;
   justify-content: space-between;
@@ -2721,6 +2792,48 @@ svg {
 .toggle-fuzzy-button.fuzzy-active {
   color: var(--vp-c-brand-1);
   background: var(--vp-c-bg-soft);
+}
+
+.history-section {
+  padding: 8px 12px;
+}
+
+.history-empty-placeholder {
+  color: var(--vp-c-text-3);
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.anon-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--vp-c-text-2);
+  font-size: 0.8rem;
+}
+
+.history-toggle-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.history-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--vp-c-text-3);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.15s;
+}
+
+.history-toggle-btn:hover {
+  color: var(--vp-c-text-1);
 }
 
 .result-list-enter-active,
